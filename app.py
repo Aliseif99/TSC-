@@ -721,7 +721,7 @@ else:
 </html>
 """
                         print_b64 = base64.b64encode(print_html.encode()).decode()
-                        st.markdown(f'<a href="data:text/html;base64,{print_b64}" download="TCS_{row["code"]}.html" style="display:block;text-align:center;background:#00ad00;color:white;padding:10px;border-radius:8px;text-decoration:none;font-weight:bold;">📥 تحميل ملف الطباعة</a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="data:text/html;base64,{print_b64}" download="TCS_{row["code"]}.html" target="_blank" style="display:block;text-align:center;background:#00ad00;color:white;padding:10px;border-radius:8px;text-decoration:none;font-weight:bold;">💾 تحميل PDF</a>', unsafe_allow_html=True)
                     
                     # زر الحذف
                     if perms.get("delete") and st.button(f"🗑️ حذف {row['code']}", use_container_width=True, key=f"del_{row['code']}"):
