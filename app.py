@@ -129,10 +129,6 @@ def img_to_b64(path):
         logger.error(f"خطأ في تحويل الصورة: {e}")
     return None
 
-def get_logo_b64():
-    """الحصول على الشعار بصيغة Base64"""
-    return img_to_b64(LOGO_PATH)
-
 def log_action(user, action, part_code=""):
     """تسجيل العملية في السجل"""
     try:
@@ -196,36 +192,33 @@ def delete_user(user_id):
         return False
 
 # ===== CSS احترافي =====
-logo_data = get_logo_b64()
-logo_src = f"data:image/jpeg;base64,{logo_data}" if logo_data else ""
-
-st.markdown(f"""
+st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 
-* {{ font-family: 'Cairo', sans-serif !important; }}
+* { font-family: 'Cairo', sans-serif !important; }
 
 /* خلفية عامة */
-.main .block-container {{ padding-top: 1rem; }}
-[data-testid="stAppViewContainer"] {{ background: linear-gradient(135deg, #f0f2f5 0%, #e8eef7 100%); }}
+.main .block-container { padding-top: 1rem; }
+[data-testid="stAppViewContainer"] { background: linear-gradient(135deg, #f0f2f5 0%, #e8eef7 100%); }
 
 /* الشريط الجانبي */
-[data-testid="stSidebar"] {{
+[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
     border-right: 4px solid #00ad00;
-}}
-[data-testid="stSidebar"] * {{ color: #e2e8f0 !important; }}
-[data-testid="stSidebar"] .stRadio label {{ 
+}
+[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+[data-testid="stSidebar"] .stRadio label { 
     font-size: 16px; padding: 10px 0; font-weight: 600;
     transition: all 0.3s ease;
-}}
-[data-testid="stSidebar"] .stRadio label:hover {{
+}
+[data-testid="stSidebar"] .stRadio label:hover {
     color: #00ad00 !important;
     padding-left: 10px;
-}}
+}
 
 /* هيدر الشركة */
-.company-header {{
+.company-header {
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #00ad00 100%);
     padding: 24px 32px;
     border-radius: 16px;
@@ -235,47 +228,45 @@ st.markdown(f"""
     margin-bottom: 32px;
     box-shadow: 0 8px 32px rgba(0,173,0,0.2);
     border: 2px solid #00ad00;
-}}
-.company-header img {{
+}
+.company-header img {
     height: 80px;
     border-radius: 12px;
     background: white;
     padding: 6px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}}
-.company-header .title-block h1 {{
+}
+.company-header .title-block h1 {
     color: white !important;
     margin: 0;
     font-size: 28px;
     font-weight: 900;
     letter-spacing: 2px;
-    border: none;
-    padding: 0;
-}}
-.company-header .title-block p {{
+}
+.company-header .title-block p {
     color: #00ff00;
     margin: 4px 0 0 0;
     font-size: 14px;
     font-weight: 700;
     letter-spacing: 1px;
-}}
-.company-header .user-info {{
+}
+.company-header .user-info {
     margin-left: auto;
     text-align: right;
     color: white;
-}}
-.company-header .user-info .username {{
+}
+.company-header .user-info .username {
     font-size: 14px;
     color: #00ad00;
     font-weight: 700;
-}}
-.company-header .user-info .role {{
+}
+.company-header .user-info .role {
     font-size: 12px;
     color: #cbd5e1;
-}}
+}
 
 /* بطاقة القطعة */
-.part-card {{
+.part-card {
     background: white;
     border-radius: 16px;
     padding: 20px;
@@ -284,13 +275,13 @@ st.markdown(f"""
     margin-bottom: 20px;
     transition: all 0.3s ease;
     overflow: hidden;
-}}
-.part-card:hover {{
+}
+.part-card:hover {
     transform: translateY(-6px);
     box-shadow: 0 12px 40px rgba(0,173,0,0.25);
     border-top-color: #00ff00;
-}}
-.part-code {{
+}
+.part-code {
     background: linear-gradient(90deg, #0f172a, #1e293b);
     color: #00ad00 !important;
     padding: 6px 16px;
@@ -302,14 +293,14 @@ st.markdown(f"""
     font-family: monospace !important;
     letter-spacing: 1.5px;
     border: 2px solid #00ad00;
-}}
-.part-name {{
+}
+.part-name {
     font-size: 18px;
     font-weight: 800;
     color: #1e293b;
     margin-bottom: 6px;
-}}
-.part-desc {{
+}
+.part-desc {
     font-size: 14px;
     color: #475569;
     margin-bottom: 10px;
@@ -318,23 +309,23 @@ st.markdown(f"""
     background: #f8fafc;
     border-right: 3px solid #00ad00;
     border-radius: 4px;
-}}
-.part-loc {{
+}
+.part-loc {
     font-size: 13px;
     color: #64748b;
     margin-bottom: 12px;
-}}
-.part-loc span {{
+}
+.part-loc span {
     background: linear-gradient(90deg, #e0f2e0, #f0fff0);
     padding: 4px 12px;
     border-radius: 16px;
     color: #1e7e1e;
     font-weight: 700;
     border: 1px solid #00ad00;
-}}
+}
 
 /* زر */
-.stButton>button {{
+.stButton>button {
     background: linear-gradient(90deg, #00ad00, #009900) !important;
     color: white !important;
     border-radius: 10px !important;
@@ -345,40 +336,40 @@ st.markdown(f"""
     font-size: 14px !important;
     transition: all 0.3s ease !important;
     box-shadow: 0 4px 12px rgba(0,173,0,0.3) !important;
-}}
-.stButton>button:hover {{
+}
+.stButton>button:hover {
     background: linear-gradient(90deg, #00ff00, #00dd00) !important;
     transform: translateY(-2px) !important;
     box-shadow: 0 8px 20px rgba(0,173,0,0.5) !important;
-}}
-.stButton>button:active {{
+}
+.stButton>button:active {
     transform: translateY(0) !important;
-}}
+}
 
 /* Form */
-.stForm {{
+.stForm {
     background: white;
     border-radius: 16px;
     padding: 28px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     border: 2px solid #e2e8f0;
     border-top: 5px solid #00ad00;
-}}
+}
 
 /* Tabs */
-.stTabs [data-baseweb="tab-list"] {{
+.stTabs [data-baseweb="tab-list"] {
     background-color: #f8fafc;
     border-bottom: 3px solid #e2e8f0;
     border-radius: 12px;
-}}
-.stTabs [aria-selected="true"] {{
+}
+.stTabs [aria-selected="true"] {
     border-bottom: 4px solid #00ad00 !important;
     color: #00ad00 !important;
     font-weight: 700 !important;
-}}
+}
 
 /* Metric cards */
-.metric-box {{
+.metric-box {
     background: white;
     border-radius: 14px;
     padding: 24px;
@@ -386,23 +377,23 @@ st.markdown(f"""
     border-left: 5px solid #00ad00;
     text-align: center;
     transition: all 0.3s ease;
-}}
-.metric-box:hover {{
+}
+.metric-box:hover {
     transform: translateY(-4px);
     box-shadow: 0 8px 24px rgba(0,173,0,0.2);
-}}
-.m-num {{ font-size: 40px; font-weight: 900; color: #00ad00; }}
-.m-lbl {{ font-size: 15px; color: #64748b; font-weight: 600; margin-top: 8px; }}
+}
+.m-num { font-size: 40px; font-weight: 900; color: #00ad00; }
+.m-lbl { font-size: 15px; color: #64748b; font-weight: 600; margin-top: 8px; }
 
 /* Login Form */
-.login-container {{
+.login-container {
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-}}
-.login-box {{
+}
+.login-box {
     background: white;
     border-radius: 20px;
     padding: 48px 40px;
@@ -411,47 +402,48 @@ st.markdown(f"""
     width: 90%;
     text-align: center;
     border: 3px solid #00ad00;
-}}
-.login-box h1 {{
+}
+.login-box h1 {
     color: #1e293b;
     font-size: 28px;
     font-weight: 900;
     margin-bottom: 8px;
-}}
-.login-box p {{
+}
+.login-box p {
     color: #64748b;
     font-size: 14px;
     margin-bottom: 32px;
-}}
-.login-logo {{
+}
+.login-logo {
     height: 100px;
     margin-bottom: 24px;
     border-radius: 12px;
-}}
+    object-fit: contain;
+}
 
 /* تنبيهات */
-.stAlert {{
+.stAlert {
     border-radius: 12px !important;
     border: 2px solid !important;
     font-weight: 600 !important;
-}}
+}
 
 /* جدول */
-.dataframe {{
+.dataframe {
     border-radius: 12px !important;
     overflow: hidden !important;
-}}
+}
 
 /* Input fields */
-.stTextInput input, .stPasswordInput input, .stSelectbox select {{
+.stTextInput input, .stPasswordInput input, .stSelectbox select {
     border: 2px solid #e2e8f0 !important;
     border-radius: 8px !important;
-}}
+}
 
-.stTextInput input:focus, .stPasswordInput input:focus {{
+.stTextInput input:focus, .stPasswordInput input:focus {
     border: 2px solid #00ad00 !important;
     box-shadow: 0 0 0 3px rgba(0,173,0,0.1) !important;
-}}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -465,12 +457,23 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown(f"""
+        st.markdown("""
         <div class="login-box">
-            {'<img src="' + logo_src + '" class="login-logo">' if logo_src else ''}
-            <h1>🔐 TCS Inventory</h1>
-            <p>نظام إدارة المخزن الذكي</p>
-        </div>
+        """, unsafe_allow_html=True)
+        
+        # عرض اللوجو إذا موجودة
+        if os.path.exists(LOGO_PATH):
+            st.image(LOGO_PATH, width=150, use_column_width=False)
+        else:
+            st.markdown("<p style='text-align:center;color:#999;'>🏢</p>", unsafe_allow_html=True)
+        
+        st.markdown("""
+            <h1 style='text-align:center;color:#1e293b;font-size:28px;font-weight:900;margin-bottom:8px;'>
+            🔐 TCS Inventory
+            </h1>
+            <p style='text-align:center;color:#64748b;font-size:14px;margin-bottom:32px;'>
+            نظام إدارة المخزن الذكي
+            </p>
         """, unsafe_allow_html=True)
         
         st.markdown("---")
@@ -504,26 +507,45 @@ if not st.session_state.logged_in:
                 except Exception as e:
                     logger.error(f"خطأ في تسجيل الدخول: {e}")
                     st.error("❌ حدث خطأ أثناء تسجيل الدخول!")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== التطبيق الرئيسي =====
 else:
     # الهيدر مع معلومات المستخدم
-    logo_data = get_logo_b64()
-    logo_src = f"data:image/jpeg;base64,{logo_data}" if logo_data else ""
-    
-    st.markdown(f"""
+    st.markdown("""
     <div class="company-header">
-        {'<img src="' + logo_src + '" alt="TCS Logo">' if logo_src else ''}
-        <div class="title-block">
-            <h1>🏢 TANK CONTAINER SERVICES</h1>
-            <p>📦 نظام إدارة المخزن الذكي | Smart QR Inventory System</p>
-        </div>
-        <div class="user-info">
-            <div class="username">👤 {st.session_state.username}</div>
-            <div class="role">🎖️ {st.session_state.role}</div>
-        </div>
-    </div>
     """, unsafe_allow_html=True)
+    
+    col_logo, col_title, col_user = st.columns([1, 3, 1.2])
+    
+    with col_logo:
+        if os.path.exists(LOGO_PATH):
+            st.image(LOGO_PATH, width=80, use_column_width=False)
+        else:
+            st.markdown("<div style='text-align:center;font-size:60px;'>🏢</div>", unsafe_allow_html=True)
+    
+    with col_title:
+        st.markdown("""
+        <div style='padding:15px 0;'>
+            <h1 style='color:white;margin:0;font-size:28px;font-weight:900;letter-spacing:2px;'>
+            🏢 TANK CONTAINER SERVICES
+            </h1>
+            <p style='color:#00ff00;margin:4px 0 0 0;font-size:14px;font-weight:700;letter-spacing:1px;'>
+            📦 نظام إدارة المخزن الذكي | Smart QR Inventory System
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_user:
+        st.markdown(f"""
+        <div style='text-align:right;color:white;padding:15px 0;'>
+            <div style='font-size:14px;color:#00ad00;font-weight:700;'>👤 {st.session_state.username}</div>
+            <div style='font-size:12px;color:#cbd5e1;margin-top:4px;'>🎖️ {st.session_state.role}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
     
     # الشريط الجانبي
     st.sidebar.markdown("---")
@@ -768,22 +790,21 @@ else:
                 cols = st.columns(3)
                 for idx, row in df.iterrows():
                     with cols[idx % 3]:
-                        img_b64 = img_to_b64(row['img_path']) if os.path.exists(row['img_path']) else None
-                        qr_b64 = img_to_b64(row['qr_path']) if os.path.exists(row['qr_path']) else None
-                        img_src = f"data:image/jpeg;base64,{img_b64}" if img_b64 else ""
-                        qr_src = f"data:image/png;base64,{qr_b64}" if qr_b64 else ""
-                        
-                        st.markdown(f"""
+                        st.markdown("""
                         <div class="part-card">
-                            <div class="part-code">{row['code']}</div>
-                            <div class="part-name">{row['name']}</div>
-                            <div class="part-desc">📝 {row['description'][:80] if row['description'] else 'بدون وصف'}...</div>
-                            <div class="part-loc">📍 <span>{row['location'] if row['location'] else 'غير محدد'}</span></div>
-                            {'<img src="' + img_src + '" style="width:100%;border-radius:8px;margin-bottom:8px;">' if img_src else ''}
-                        </div>
                         """, unsafe_allow_html=True)
                         
-                        if qr_src:
+                        st.markdown(f"""
+                        <div class="part-code">{row['code']}</div>
+                        <div class="part-name">{row['name']}</div>
+                        <div class="part-desc">📝 {row['description'][:80] if row['description'] else 'بدون وصف'}...</div>
+                        <div class="part-loc">📍 <span>{row['location'] if row['location'] else 'غير محدد'}</span></div>
+                        """, unsafe_allow_html=True)
+                        
+                        if os.path.exists(row['img_path']):
+                            st.image(row['img_path'], use_column_width=True)
+                        
+                        if os.path.exists(row['qr_path']):
                             st.image(row['qr_path'], width=120, caption="QR Code")
                         
                         if st.button(f"🖨️ طباعة", use_container_width=True, key=f"print_{row['code']}"):
@@ -800,6 +821,8 @@ else:
                             except Exception as e:
                                 logger.error(f"خطأ في حذف القطعة: {e}")
                                 st.error("❌ حدث خطأ أثناء الحذف!")
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
         except Exception as e:
             logger.error(f"خطأ في الجرد والبحث: {e}")
             st.error("❌ حدث خطأ في تحميل البيانات")
