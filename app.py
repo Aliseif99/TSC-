@@ -3,12 +3,17 @@ import pandas as pd
 import sqlite3
 import os
 import qrcode
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import io
 import base64
 import hashlib
 from datetime import datetime
 import json
+import logging
+
+# ===== إعدادات Logging =====
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ===== إعدادات الصفحة =====
 st.set_page_config(
@@ -25,94 +30,170 @@ IMG_DIR = os.path.join(BASE_DIR, "images")
 QR_DIR = os.path.join(BASE_DIR, "qrcodes")
 DB_PATH = os.path.join(BASE_DIR, "tcs_data.db")
 
+# إنشاء المجلدات
 for folder in [IMG_DIR, QR_DIR]:
     os.makedirs(folder, exist_ok=True)
 
-# ===== قاعدة البيانات =====
-def init_db():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    c = conn.cursor()
-    
-    # جدول المستخدمين
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, 
-                  role TEXT, permissions TEXT, created_at TEXT)''')
-    
-    # جدول القطع
-    c.execute('''CREATE TABLE IF NOT EXISTS inventory
-                 (code TEXT PRIMARY KEY, name TEXT, description TEXT, location TEXT, 
-                  img_path TEXT, qr_path TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)''')
-    
-    # جدول السجلات
-    c.execute('''CREATE TABLE IF NOT EXISTS logs
-                 (id INTEGER PRIMARY KEY, user TEXT, action TEXT, part_code TEXT, timestamp TEXT)''')
-    
-    conn.commit()
-    return conn
-
-conn = init_db()
-c = conn.cursor()
-
-# إنشاء حساب المدير الأساسي
-def create_admin():
-    hashed_pwd = hashlib.sha256("9/9/2021".encode()).hexdigest()
+# ===== دالة الاتصال بقاعدة البيانات =====
+@st.cache_resource
+def get_db_connection():
+    """الاتصال الآمن بقاعدة البيانات"""
     try:
-        c.execute("INSERT INTO users VALUES (NULL, ?, ?, ?, ?, ?)",
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=20.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+    except Exception as e:
+        logger.error(f"خطأ في الاتصال بقاعدة البيانات: {e}")
+        st.error("❌ خطأ في الاتصال بقاعدة البيانات")
+        st.stop()
+
+conn = get_db_connection()
+
+# ===== إنشاء جداول قاعدة البيانات =====
+def init_db():
+    """إنشاء جداول قاعدة البيانات"""
+    try:
+        c = conn.cursor()
+        
+        # جدول المستخدمين
+        c.execute('''CREATE TABLE IF NOT EXISTS users
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      username TEXT UNIQUE NOT NULL, 
+                      password TEXT NOT NULL, 
+                      role TEXT NOT NULL, 
+                      permissions TEXT NOT NULL, 
+                      created_at TEXT NOT NULL)''')
+        
+        # جدول القطع
+        c.execute('''CREATE TABLE IF NOT EXISTS inventory
+                     (code TEXT PRIMARY KEY, 
+                      name TEXT NOT NULL, 
+                      description TEXT, 
+                      location TEXT, 
+                      img_path TEXT, 
+                      qr_path TEXT, 
+                      created_by TEXT NOT NULL, 
+                      created_at TEXT NOT NULL, 
+                      updated_at TEXT NOT NULL)''')
+        
+        # جدول السجلات
+        c.execute('''CREATE TABLE IF NOT EXISTS logs
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      user TEXT NOT NULL, 
+                      action TEXT NOT NULL, 
+                      part_code TEXT, 
+                      timestamp TEXT NOT NULL)''')
+        
+        conn.commit()
+        logger.info("✅ تم إنشاء جداول قاعدة البيانات بنجاح")
+    except Exception as e:
+        logger.error(f"خطأ في إنشاء الجداول: {e}")
+
+init_db()
+
+# ===== إنشاء حساب المدير الأساسي =====
+def create_admin():
+    """إنشاء حساب المدير الافتراضي"""
+    try:
+        c = conn.cursor()
+        hashed_pwd = hashlib.sha256("9/9/2021".encode()).hexdigest()
+        c.execute("INSERT INTO users (username, password, role, permissions, created_at) VALUES (?, ?, ?, ?, ?)",
                   ("ALI SEIF", hashed_pwd, "admin", 
                    json.dumps({"add": True, "edit": True, "delete": True, "view": True, "manage_users": True}),
                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
-    except:
-        pass
+        logger.info("✅ تم إنشاء حساب المدير بنجاح")
+    except sqlite3.IntegrityError:
+        logger.info("ℹ️ حساب المدير موجود بالفعل")
+    except Exception as e:
+        logger.error(f"خطأ في إنشاء حساب المدير: {e}")
 
 create_admin()
 
 # ===== دوال مساعدة =====
 def hash_password(pwd):
+    """تشفير كلمة المرور"""
     return hashlib.sha256(pwd.encode()).hexdigest()
 
 def verify_password(pwd, hashed):
+    """التحقق من كلمة المرور"""
     return hashlib.sha256(pwd.encode()).hexdigest() == hashed
 
 def img_to_b64(path):
-    if os.path.exists(path):
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
+    """تحويل الصورة إلى Base64"""
+    try:
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+    except Exception as e:
+        logger.error(f"خطأ في تحويل الصورة: {e}")
     return None
 
 def get_logo_b64():
+    """الحصول على الشعار بصيغة Base64"""
     return img_to_b64(LOGO_PATH)
 
 def log_action(user, action, part_code=""):
-    c.execute("INSERT INTO logs VALUES (NULL, ?, ?, ?, ?)",
-              (user, action, part_code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    conn.commit()
+    """تسجيل العملية في السجل"""
+    try:
+        c = conn.cursor()
+        c.execute("INSERT INTO logs (user, action, part_code, timestamp) VALUES (?, ?, ?, ?)",
+                  (user, action, part_code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"خطأ في تسجيل العملية: {e}")
 
 def get_user_permissions(username):
-    c.execute("SELECT permissions FROM users WHERE username=?", (username,))
-    result = c.fetchone()
-    if result:
-        return json.loads(result[0])
+    """الحصول على صلاحيات المستخدم"""
+    try:
+        c = conn.cursor()
+        c.execute("SELECT permissions FROM users WHERE username=?", (username,))
+        result = c.fetchone()
+        if result:
+            return json.loads(result[0])
+    except Exception as e:
+        logger.error(f"خطأ في الحصول على الصلاحيات: {e}")
     return {}
 
 def get_all_users():
-    c.execute("SELECT id, username, role FROM users")
-    return c.fetchall()
+    """الحصول على جميع المستخدمين"""
+    try:
+        c = conn.cursor()
+        c.execute("SELECT id, username, role FROM users")
+        return c.fetchall()
+    except Exception as e:
+        logger.error(f"خطأ في جلب المستخدمين: {e}")
+        return []
 
 def add_user(username, password, role, permissions):
-    hashed = hash_password(password)
+    """إضافة مستخدم جديد"""
     try:
-        c.execute("INSERT INTO users VALUES (NULL, ?, ?, ?, ?, ?)",
+        c = conn.cursor()
+        hashed = hash_password(password)
+        c.execute("INSERT INTO users (username, password, role, permissions, created_at) VALUES (?, ?, ?, ?, ?)",
                   (username, hashed, role, json.dumps(permissions), 
                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
+        logger.info(f"✅ تم إضافة المستخدم: {username}")
         return True
-    except:
+    except sqlite3.IntegrityError:
+        logger.warning(f"⚠️ المستخدم موجود بالفعل: {username}")
+        return False
+    except Exception as e:
+        logger.error(f"خطأ في إضافة المستخدم: {e}")
         return False
 
 def delete_user(user_id):
-    c.execute("DELETE FROM users WHERE id=?", (user_id,))
-    conn.commit()
+    """حذف مستخدم"""
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE id=?", (user_id,))
+        conn.commit()
+        logger.info(f"✅ تم حذف المستخدم: {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"خطأ في حذف المستخدم: {e}")
+        return False
 
 # ===== CSS احترافي =====
 logo_data = get_logo_b64()
@@ -360,6 +441,17 @@ st.markdown(f"""
     border-radius: 12px !important;
     overflow: hidden !important;
 }}
+
+/* Input fields */
+.stTextInput input, .stPasswordInput input, .stSelectbox select {{
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+}}
+
+.stTextInput input:focus, .stPasswordInput input:focus {{
+    border: 2px solid #00ad00 !important;
+    box-shadow: 0 0 0 3px rgba(0,173,0,0.1) !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -383,31 +475,35 @@ if not st.session_state.logged_in:
         
         st.markdown("---")
         
-        username = st.text_input("👤 اسم المستخدم", placeholder="أدخل اسم المستخدم")
-        password = st.text_input("🔑 كلمة المرور", type="password", placeholder="أدخل كلمة المرور")
+        username = st.text_input("👤 اسم المستخدم", placeholder="أدخل اسم المستخدم", key="login_username")
+        password = st.text_input("🔑 كلمة المرور", type="password", placeholder="أدخل كلمة المرور", key="login_password")
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        col_login, col_space = st.columns([2, 1])
-        with col_login:
-            if st.button("🚀 دخول", use_container_width=True):
-                c.execute("SELECT role, permissions FROM users WHERE username=?", (username,))
-                user = c.fetchone()
-                
-                if user:
-                    c.execute("SELECT password FROM users WHERE username=?", (username,))
-                    pwd_hash = c.fetchone()[0]
+        if st.button("🚀 دخول", use_container_width=True):
+            if not username or not password:
+                st.error("❌ يرجى ملء جميع الحقول!")
+            else:
+                try:
+                    c = conn.cursor()
+                    c.execute("SELECT role, permissions, password FROM users WHERE username=?", (username,))
+                    user = c.fetchone()
                     
-                    if verify_password(password, pwd_hash):
-                        st.session_state.logged_in = True
-                        st.session_state.username = username
-                        st.session_state.role = user[0]
-                        log_action(username, "تسجيل دخول")
-                        st.rerun()
+                    if user:
+                        if verify_password(password, user[2]):
+                            st.session_state.logged_in = True
+                            st.session_state.username = username
+                            st.session_state.role = user[0]
+                            log_action(username, "تسجيل دخول")
+                            st.success("✅ تم التسجيل بنجاح!")
+                            st.rerun()
+                        else:
+                            st.error("❌ كلمة المرور غير صحيحة!")
                     else:
-                        st.error("❌ كلمة المرور غير صحيحة!")
-                else:
-                    st.error("❌ اسم المستخدم غير موجود!")
+                        st.error("❌ اسم المستخدم غير موجود!")
+                except Exception as e:
+                    logger.error(f"خطأ في تسجيل الدخول: {e}")
+                    st.error("❌ حدث خطأ أثناء تسجيل الدخول!")
 
 # ===== التطبيق الرئيسي =====
 else:
@@ -461,68 +557,72 @@ else:
     if menu == "🏠 لوحة التحكم":
         st.subheader("📊 لوحة التحكم والإحصائيات")
         
-        df = pd.read_sql_query("SELECT * FROM inventory", conn)
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(f"""
-            <div class="metric-box">
-                <div class="m-num">{len(df)}</div>
-                <div class="m-lbl">إجمالي الأصناف</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            c.execute("SELECT COUNT(*) FROM users")
-            users_count = c.fetchone()[0]
-            st.markdown(f"""
-            <div class="metric-box">
-                <div class="m-num">{users_count}</div>
-                <div class="m-lbl">عدد المستخدمين</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            c.execute("SELECT COUNT(*) FROM logs")
-            logs_count = c.fetchone()[0]
-            st.markdown(f"""
-            <div class="metric-box">
-                <div class="m-num">{logs_count}</div>
-                <div class="m-lbl">عدد العمليات</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            c.execute("SELECT COUNT(DISTINCT location) FROM inventory WHERE location IS NOT NULL AND location != ''")
-            locations = c.fetchone()[0]
-            st.markdown(f"""
-            <div class="metric-box">
-                <div class="m-num">{locations}</div>
-                <div class="m-lbl">مواقع التخزين</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        if not df.empty:
-            st.info("✅ نظام شغال بسلاسة وجاهز للعمل!")
+        try:
+            c = conn.cursor()
+            df = pd.read_sql_query("SELECT * FROM inventory", conn)
             
-            # آخر المضافة
-            st.subheader("🆕 آخر الأصناف المضافة")
-            df_recent = df.tail(5)
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown(f"""
+                <div class="metric-box">
+                    <div class="m-num">{len(df)}</div>
+                    <div class="m-lbl">إجمالي الأصناف</div>
+                </div>
+                """, unsafe_allow_html=True)
             
-            for idx, row in df_recent.iterrows():
-                with st.expander(f"📦 {row['code']} - {row['name']}"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write(f"**الوصف:** {row['description']}")
-                        st.write(f"**الموقع:** {row['location']}")
-                        st.write(f"**أضافها:** {row['created_by']}")
-                    with col2:
-                        if os.path.exists(row['img_path']):
-                            st.image(row['img_path'], width=150)
-        else:
-            st.warning("⚠️ لا توجد أصناف مسجلة بعد. ابدأ بإضافة أصناف جديدة!")
+            with col2:
+                c.execute("SELECT COUNT(*) FROM users")
+                users_count = c.fetchone()[0]
+                st.markdown(f"""
+                <div class="metric-box">
+                    <div class="m-num">{users_count}</div>
+                    <div class="m-lbl">عدد المستخدمين</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                c.execute("SELECT COUNT(*) FROM logs")
+                logs_count = c.fetchone()[0]
+                st.markdown(f"""
+                <div class="metric-box">
+                    <div class="m-num">{logs_count}</div>
+                    <div class="m-lbl">عدد العمليات</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col4:
+                c.execute("SELECT COUNT(DISTINCT location) FROM inventory WHERE location IS NOT NULL AND location != ''")
+                locations = c.fetchone()[0]
+                st.markdown(f"""
+                <div class="metric-box">
+                    <div class="m-num">{locations}</div>
+                    <div class="m-lbl">مواقع التخزين</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            if not df.empty:
+                st.info("✅ النظام يعمل بكفاءة!")
+                
+                st.subheader("🆕 آخر الأصناف المضافة")
+                df_recent = df.tail(5)
+                
+                for idx, row in df_recent.iterrows():
+                    with st.expander(f"📦 {row['code']} - {row['name']}"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**الوصف:** {row['description']}")
+                            st.write(f"**الموقع:** {row['location']}")
+                            st.write(f"**أضافها:** {row['created_by']}")
+                        with col2:
+                            if os.path.exists(row['img_path']):
+                                st.image(row['img_path'], width=150)
+            else:
+                st.warning("⚠️ لا توجد أصناف مسجلة بعد. ابدأ بإضافة أصناف جديدة!")
+        except Exception as e:
+            logger.error(f"خطأ في لوحة التحكم: {e}")
+            st.error("❌ حدث خطأ في تحميل البيانات")
     
     # ===== إضافة/تعديل قطعة =====
     elif menu == "➕ إضافة/تعديل قطعة" and (perms.get("add") or perms.get("edit")):
@@ -534,11 +634,11 @@ else:
             with st.form("add_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    code = st.text_input("🔖 كود القطعة (مثال: SP-VALVE-001)")
-                    name = st.text_input("🔩 اسم القطعة (مثال: صمام نحاسي)")
+                    code = st.text_input("🔖 كود القطعة", placeholder="مثال: SP-VALVE-001")
+                    name = st.text_input("🔩 اسم القطعة", placeholder="مثال: صمام نحاسي")
                 
                 with col2:
-                    location = st.text_input("📍 موقع التخزين (مثال: الرف 4، الصندوق B3)")
+                    location = st.text_input("📍 موقع التخزين", placeholder="مثال: الرف 4، الصندوق B3")
                     file = st.file_uploader("📷 صورة القطعة", type=['jpg','png','jpeg'])
                 
                 description = st.text_area("📝 وصف مفصل للقطعة", height=100)
@@ -546,190 +646,163 @@ else:
                 submit = st.form_submit_button("💾 حفظ وتوليد QR", use_container_width=True)
                 
                 if submit:
-                    if code and file and name:
-                        # حفظ الصورة
-                        img_path = os.path.join(IMG_DIR, f"{code}.jpg")
-                        qr_path = os.path.join(QR_DIR, f"{code}.png")
-                        
-                        img = Image.open(file).convert("RGB")
-                        img.save(img_path)
-                        
-                        # توليد QR Code
-                        qr_data = f"CODE: {code}\nNAME: {name}\nDESC: {description[:50]}\nLOC: {location}"
-                        qr_img = qrcode.make(qr_data)
-                        qr_img.save(qr_path)
-                        
-                        # حفظ في قاعدة البيانات
-                        c.execute("""INSERT OR REPLACE INTO inventory 
-                                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                                  (code, name, description, location, img_path, qr_path, 
-                                   st.session_state.username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                        conn.commit()
-                        
-                        log_action(st.session_state.username, "إضافة قطعة", code)
-                        
-                        st.success(f"✅ تم تسجيل القطعة **{code}** بنجاح!")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.image(img_path, caption="صورة القطعة", use_column_width=True)
-                        with col2:
-                            st.image(qr_path, caption="QR Code", use_column_width=True)
-                    else:
+                    if not code or not file or not name:
                         st.error("⚠️ يرجى ملء جميع الحقول المطلوبة (الكود، الاسم، الصورة)!")
-        
-        with tab2:
-            df = pd.read_sql_query("SELECT code, name FROM inventory", conn)
-            if not df.empty:
-                selected_code = st.selectbox("🔍 اختر القطعة للتعديل", df['code'].tolist())
-                
-                if selected_code:
-                    c.execute("SELECT * FROM inventory WHERE code=?", (selected_code,))
-                    item = c.fetchone()
-                    
-                    with st.form("edit_form"):
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            new_name = st.text_input("🔩 اسم القطعة", value=item[1])
-                            new_location = st.text_input("📍 موقع التخزين", value=item[3])
-                        with col2:
-                            new_desc = st.text_area("📝 الوصف", value=item[2], height=100)
-                            new_file = st.file_uploader("📷 صورة جديدة (اختياري)", type=['jpg','png','jpeg'])
-                        
-                        if st.form_submit_button("✅ حفظ التعديلات", use_container_width=True):
-                            img_path = item[4]
-                            if new_file:
-                                img = Image.open(new_file).convert("RGB")
-                                img.save(img_path)
+                    else:
+                        try:
+                            # حفظ الصورة
+                            img_path = os.path.join(IMG_DIR, f"{code}.jpg")
+                            qr_path = os.path.join(QR_DIR, f"{code}.png")
                             
-                            c.execute("""UPDATE inventory SET name=?, description=?, location=?, updated_at=?
-                                       WHERE code=?""",
-                                      (new_name, new_desc, new_location, 
-                                       datetime.now().strftime("%Y-%m-%d %H:%M:%S"), selected_code))
+                            img = Image.open(file).convert("RGB")
+                            img.save(img_path)
+                            
+                            # توليد QR Code
+                            qr_data = f"CODE: {code}\nNAME: {name}\nDESC: {description[:50]}\nLOC: {location}"
+                            qr_img = qrcode.make(qr_data)
+                            qr_img.save(qr_path)
+                            
+                            # حفظ في قاعدة البيانات
+                            c = conn.cursor()
+                            c.execute("""INSERT OR REPLACE INTO inventory 
+                                       (code, name, description, location, img_path, qr_path, created_by, created_at, updated_at)
+                                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                                      (code, name, description, location, img_path, qr_path, 
+                                       st.session_state.username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                       datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                             conn.commit()
                             
-                            log_action(st.session_state.username, "تعديل قطعة", selected_code)
-                            st.success("✅ تم التحديث بنجاح!")
-            else:
-                st.warning("لا توجد قطع للتعديل!")
+                            log_action(st.session_state.username, "إضافة قطعة", code)
+                            
+                            st.success(f"✅ تم تسجيل القطعة **{code}** بنجاح!")
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.image(img_path, caption="صورة القطعة", use_column_width=True)
+                            with col2:
+                                st.image(qr_path, caption="QR Code", use_column_width=True)
+                        except Exception as e:
+                            logger.error(f"خطأ في إضافة القطعة: {e}")
+                            st.error("❌ حدث خطأ أثناء إضافة القطعة!")
+        
+        with tab2:
+            try:
+                df = pd.read_sql_query("SELECT code, name FROM inventory", conn)
+                if not df.empty:
+                    selected_code = st.selectbox("🔍 اختر القطعة للتعديل", df['code'].tolist())
+                    
+                    if selected_code:
+                        c = conn.cursor()
+                        c.execute("SELECT * FROM inventory WHERE code=?", (selected_code,))
+                        item = c.fetchone()
+                        
+                        if item:
+                            with st.form("edit_form"):
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    new_name = st.text_input("🔩 اسم القطعة", value=item[1])
+                                    new_location = st.text_input("📍 موقع التخزين", value=item[3])
+                                with col2:
+                                    new_desc = st.text_area("📝 الوصف", value=item[2], height=100)
+                                    new_file = st.file_uploader("📷 صورة جديدة (اختياري)", type=['jpg','png','jpeg'])
+                                
+                                if st.form_submit_button("✅ حفظ التعديلات", use_container_width=True):
+                                    try:
+                                        img_path = item[4]
+                                        if new_file:
+                                            img = Image.open(new_file).convert("RGB")
+                                            img.save(img_path)
+                                        
+                                        c.execute("""UPDATE inventory SET name=?, description=?, location=?, updated_at=?
+                                                   WHERE code=?""",
+                                                  (new_name, new_desc, new_location, 
+                                                   datetime.now().strftime("%Y-%m-%d %H:%M:%S"), selected_code))
+                                        conn.commit()
+                                        
+                                        log_action(st.session_state.username, "تعديل قطعة", selected_code)
+                                        st.success("✅ تم التحديث بنجاح!")
+                                    except Exception as e:
+                                        logger.error(f"خطأ في تعديل القطعة: {e}")
+                                        st.error("❌ حدث خطأ أثناء التعديل!")
+                else:
+                    st.warning("لا توجد قطع للتعديل!")
+            except Exception as e:
+                logger.error(f"خطأ في تحميل القطع: {e}")
+                st.error("❌ حدث خطأ في تحميل البيانات")
     
     # ===== الجرد والبحث =====
     elif menu == "📋 الجرد والبحث" and perms.get("view"):
         st.subheader("📋 جرد المخزن")
         
-        df = pd.read_sql_query("SELECT * FROM inventory", conn)
-        
-        col1, col2, col3 = st.columns([2, 1, 1])
-        with col1:
-            search_query = st.text_input("🔍 بحث بالكود أو الاسم أو الموقع:")
-        with col2:
-            sort_by = st.selectbox("🔀 ترتيب حسب", ["الكود", "الاسم", "التاريخ"])
-        with col3:
-            if st.button("🔄 تحديث"):
-                st.rerun()
-        
-        if search_query:
-            mask = (
-                df['code'].str.contains(search_query, case=False, na=False) |
-                df['name'].str.contains(search_query, case=False, na=False) |
-                df['location'].str.contains(search_query, case=False, na=False) |
-                df['description'].str.contains(search_query, case=False, na=False)
-            )
-            df = df[mask]
-        
-        if sort_by == "الاسم":
-            df = df.sort_values('name')
-        elif sort_by == "التاريخ":
-            df = df.sort_values('created_at', ascending=False)
-        else:
-            df = df.sort_values('code')
-        
-        if df.empty:
-            st.warning("❌ لا توجد نتائج مطابقة!")
-        else:
-            cols = st.columns(3)
-            for idx, row in df.iterrows():
-                with cols[idx % 3]:
-                    img_b64 = img_to_b64(row['img_path']) if os.path.exists(row['img_path']) else None
-                    qr_b64 = img_to_b64(row['qr_path']) if os.path.exists(row['qr_path']) else None
-                    img_src = f"data:image/jpeg;base64,{img_b64}" if img_b64 else ""
-                    qr_src = f"data:image/png;base64,{qr_b64}" if qr_b64 else ""
-                    
-                    st.markdown(f"""
-                    <div class="part-card">
-                        <div class="part-code">{row['code']}</div>
-                        <div class="part-name">{row['name']}</div>
-                        <div class="part-desc">📝 {row['description'][:80]}...</div>
-                        <div class="part-loc">📍 <span>{row['location']}</span></div>
-                        {'<img src="' + img_src + '" style="width:100%;border-radius:8px;margin-bottom:8px;">' if img_src else ''}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if qr_src:
-                        st.image(row['qr_path'], width=120, caption="QR Code")
-                    
-                    # زر الطباعة
-                    if st.button(f"🖨️ طباعة {row['code']}", use_container_width=True, key=f"print_{row['code']}"):
-                        print_html = f"""
-<!DOCTYPE html>
-<html dir="rtl">
-<head>
-<meta charset="UTF-8">
-<title>طباعة - {row['code']}</title>
-<style>
-  body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: white; }}
-  .header {{ text-align: center; border-bottom: 3px solid #00ad00; padding-bottom: 15px; margin-bottom: 20px; }}
-  .header h2 {{ color: #1e293b; margin: 0; font-size: 20px; }}
-  .header p {{ color: #00ad00; margin: 5px 0 0 0; font-size: 12px; font-weight: bold; }}
-  .body {{ display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; }}
-  .info {{ flex: 1; }}
-  .info table {{ width: 100%; border-collapse: collapse; }}
-  .info td {{ padding: 12px; border: 1px solid #e2e8f0; font-size: 14px; }}
-  .info td:first-child {{ background: #f8fafc; font-weight: bold; color: #1e293b; width: 35%; }}
-  .part-img {{ max-width: 200px; border-radius: 8px; margin: 10px 0; }}
-  .qr-section {{ text-align: center; }}
-  .qr-img {{ width: 150px; margin: 10px 0; }}
-  .footer {{ text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; margin-top: 20px; }}
-</style>
-</head>
-<body>
-<div class="header">
-  <h2>TANK CONTAINER SERVICES</h2>
-  <p>نظام إدارة المخزن الذكي | Smart QR Inventory System</p>
-</div>
-<div class="body">
-  <div class="info">
-    <table>
-      <tr><td>🔖 كود القطعة</td><td><strong style="color:#00ad00;font-size:16px;">{row['code']}</strong></td></tr>
-      <tr><td>🔩 اسم القطعة</td><td>{row['name']}</td></tr>
-      <tr><td>📝 الوصف</td><td>{row['description']}</td></tr>
-      <tr><td>📍 موقع التخزين</td><td><strong style="color:#00ad00;">{row['location']}</strong></td></tr>
-      <tr><td>👤 أضافها</td><td>{row['created_by']}</td></tr>
-    </table>
-    {'<img src="' + img_src + '" class="part-img">' if img_src else ''}
-  </div>
-  <div class="qr-section">
-    <p style="font-weight:bold;color:#1e293b;">امسح الكود للتحقق</p>
-    {'<img src="' + qr_src + '" class="qr-img">' if qr_src else ''}
-    <p style="font-size:12px;color:#64748b;">{row['code']}</p>
-  </div>
-</div>
-<div class="footer">© 2025 Tank Container Services | نظام إدارة المخزن الذكي</div>
-<script>window.onload=function(){{window.print();}}</script>
-</body>
-</html>
-"""
-                        print_b64 = base64.b64encode(print_html.encode()).decode()
-                        st.markdown(f'<a href="data:text/html;base64,{print_b64}" download="TCS_{row["code"]}.html" target="_blank" style="display:block;text-align:center;background:#00ad00;color:white;padding:10px;border-radius:8px;text-decoration:none;font-weight:bold;">💾 تحميل PDF</a>', unsafe_allow_html=True)
-                    
-                    # زر الحذف
-                    if perms.get("delete") and st.button(f"🗑️ حذف {row['code']}", use_container_width=True, key=f"del_{row['code']}"):
-                        c.execute("DELETE FROM inventory WHERE code=?", (row['code'],))
-                        conn.commit()
-                        log_action(st.session_state.username, "حذف قطعة", row['code'])
-                        st.success(f"✅ تم حذف {row['code']}")
-                        st.rerun()
+        try:
+            df = pd.read_sql_query("SELECT * FROM inventory", conn)
+            
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                search_query = st.text_input("🔍 بحث بالكود أو الاسم أو الموقع:")
+            with col2:
+                sort_by = st.selectbox("🔀 ترتيب حسب", ["الكود", "الاسم", "التاريخ"])
+            with col3:
+                if st.button("🔄 تحديث"):
+                    st.rerun()
+            
+            if search_query:
+                mask = (
+                    df['code'].str.contains(search_query, case=False, na=False) |
+                    df['name'].str.contains(search_query, case=False, na=False) |
+                    df['location'].str.contains(search_query, case=False, na=False) |
+                    df['description'].str.contains(search_query, case=False, na=False)
+                )
+                df = df[mask]
+            
+            if sort_by == "الاسم":
+                df = df.sort_values('name')
+            elif sort_by == "التاريخ":
+                df = df.sort_values('created_at', ascending=False)
+            else:
+                df = df.sort_values('code')
+            
+            if df.empty:
+                st.warning("❌ لا توجد نتائج مطابقة!")
+            else:
+                cols = st.columns(3)
+                for idx, row in df.iterrows():
+                    with cols[idx % 3]:
+                        img_b64 = img_to_b64(row['img_path']) if os.path.exists(row['img_path']) else None
+                        qr_b64 = img_to_b64(row['qr_path']) if os.path.exists(row['qr_path']) else None
+                        img_src = f"data:image/jpeg;base64,{img_b64}" if img_b64 else ""
+                        qr_src = f"data:image/png;base64,{qr_b64}" if qr_b64 else ""
+                        
+                        st.markdown(f"""
+                        <div class="part-card">
+                            <div class="part-code">{row['code']}</div>
+                            <div class="part-name">{row['name']}</div>
+                            <div class="part-desc">📝 {row['description'][:80] if row['description'] else 'بدون وصف'}...</div>
+                            <div class="part-loc">📍 <span>{row['location'] if row['location'] else 'غير محدد'}</span></div>
+                            {'<img src="' + img_src + '" style="width:100%;border-radius:8px;margin-bottom:8px;">' if img_src else ''}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if qr_src:
+                            st.image(row['qr_path'], width=120, caption="QR Code")
+                        
+                        if st.button(f"🖨️ طباعة", use_container_width=True, key=f"print_{row['code']}"):
+                            st.info("💡 استخدم خيار الطباعة من المتصفح (Ctrl+P)")
+                        
+                        if perms.get("delete") and st.button(f"🗑️ حذف", use_container_width=True, key=f"del_{row['code']}"):
+                            try:
+                                c = conn.cursor()
+                                c.execute("DELETE FROM inventory WHERE code=?", (row['code'],))
+                                conn.commit()
+                                log_action(st.session_state.username, "حذف قطعة", row['code'])
+                                st.success(f"✅ تم حذف {row['code']}")
+                                st.rerun()
+                            except Exception as e:
+                                logger.error(f"خطأ في حذف القطعة: {e}")
+                                st.error("❌ حدث خطأ أثناء الحذف!")
+        except Exception as e:
+            logger.error(f"خطأ في الجرد والبحث: {e}")
+            st.error("❌ حدث خطأ في تحميل البيانات")
     
     # ===== إدارة الحسابات =====
     elif menu == "👥 إدارة الحسابات" and st.session_state.role == "admin":
@@ -775,29 +848,34 @@ else:
                         if add_user(new_username, new_password, new_role, perms):
                             log_action(st.session_state.username, "إضافة مستخدم", new_username)
                             st.success(f"✅ تم إضافة المستخدم **{new_username}** بنجاح!")
+                            st.rerun()
                         else:
                             st.error("❌ اسم المستخدم موجود بالفعل!")
         
         with tab2:
-            users = get_all_users()
-            if users:
-                df_users = pd.DataFrame(users, columns=["ID", "اسم المستخدم", "الدور"])
-                st.dataframe(df_users, use_container_width=True)
-                
-                st.write("**حذف مستخدم:**")
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    user_to_delete = st.selectbox("اختر المستخدم للحذف", 
-                                                  [u[1] for u in users if u[1] != "ALI SEIF"])
-                with col2:
-                    if st.button("🗑️ حذف", use_container_width=True):
-                        user_id = next(u[0] for u in users if u[1] == user_to_delete)
-                        delete_user(user_id)
-                        log_action(st.session_state.username, "حذف مستخدم", user_to_delete)
-                        st.success("✅ تم الحذف!")
-                        st.rerun()
-            else:
-                st.warning("لا توجد مستخدمين!")
+            try:
+                users = get_all_users()
+                if users:
+                    df_users = pd.DataFrame(users, columns=["ID", "اسم المستخدم", "الدور"])
+                    st.dataframe(df_users, use_container_width=True)
+                    
+                    st.write("**حذف مستخدم:**")
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        user_to_delete = st.selectbox("اختر المستخدم للحذف", 
+                                                      [u[1] for u in users if u[1] != "ALI SEIF"])
+                    with col2:
+                        if st.button("🗑️ حذف", use_container_width=True):
+                            user_id = next(u[0] for u in users if u[1] == user_to_delete)
+                            if delete_user(user_id):
+                                log_action(st.session_state.username, "حذف مستخدم", user_to_delete)
+                                st.success("✅ تم الحذف!")
+                                st.rerun()
+                else:
+                    st.warning("لا توجد مستخدمين!")
+            except Exception as e:
+                logger.error(f"خطأ في إدارة الحسابات: {e}")
+                st.error("❌ حدث خطأ في تحميل البيانات")
     
     # ===== التقارير =====
     elif menu == "📊 التقارير والسجلات" and st.session_state.role == "admin":
@@ -806,35 +884,48 @@ else:
         tab1, tab2 = st.tabs(["📈 تقارير المخزن", "📋 سجل العمليات"])
         
         with tab1:
-            df = pd.read_sql_query("SELECT * FROM inventory", conn)
-            
-            if not df.empty:
-                st.write(f"**إجمالي الأصناف:** {len(df)}")
+            try:
+                df = pd.read_sql_query("SELECT * FROM inventory", conn)
                 
-                # بيانات موجزة
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**أصناف حسب الموقع:**")
-                    location_counts = df['location'].value_counts()
-                    st.bar_chart(location_counts)
-                
-                with col2:
-                    st.write("**آخر التحديثات:**")
-                    df_sorted = df.sort_values('updated_at', ascending=False).head(10)
-                    st.dataframe(df_sorted[['code', 'name', 'updated_at']], use_container_width=True)
+                if not df.empty:
+                    st.write(f"**إجمالي الأصناف:** {len(df)}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**أصناف حسب الموقع:**")
+                        location_counts = df['location'].value_counts()
+                        st.bar_chart(location_counts)
+                    
+                    with col2:
+                        st.write("**آخر التحديثات:**")
+                        df_sorted = df.sort_values('updated_at', ascending=False).head(10)
+                        st.dataframe(df_sorted[['code', 'name', 'updated_at']], use_container_width=True)
+                else:
+                    st.info("ℹ️ لا توجد بيانات بعد!")
+            except Exception as e:
+                logger.error(f"خطأ في التقارير: {e}")
+                st.error("❌ حدث خطأ في تحميل البيانات")
         
         with tab2:
-            logs = pd.read_sql_query("SELECT * FROM logs ORDER BY timestamp DESC", conn)
-            if not logs.empty:
-                st.dataframe(logs, use_container_width=True)
-            else:
-                st.info("لا توجد سجلات بعد!")
+            try:
+                logs = pd.read_sql_query("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 100", conn)
+                if not logs.empty:
+                    st.dataframe(logs, use_container_width=True)
+                else:
+                    st.info("ℹ️ لا توجد سجلات بعد!")
+            except Exception as e:
+                logger.error(f"خطأ في السجلات: {e}")
+                st.error("❌ حدث خطأ في تحميل البيانات")
     
     # ===== تسجيل الخروج =====
     elif menu == "🚪 تسجيل الخروج":
-        log_action(st.session_state.username, "تسجيل خروج")
-        st.session_state.logged_in = False
-        st.session_state.username = None
-        st.session_state.role = None
-        st.success("✅ تم تسجيل الخروج بنجاح!")
-        st.rerun()
+        try:
+            log_action(st.session_state.username, "تسجيل خروج")
+            st.session_state.logged_in = False
+            st.session_state.username = None
+            st.session_state.role = None
+            st.success("✅ تم تسجيل الخروج بنجاح!")
+            st.rerun()
+        except Exception as e:
+            logger.error(f"خطأ في تسجيل الخروج: {e}")
+            st.error("❌ حدث خطأ أثناء تسجيل الخروج!")
